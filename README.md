@@ -14,4 +14,3 @@ All training was conducted on Google Colab Pro using a GPU A100 runtime.
 
 ## Acknowledgments
 Original inspiration: Gesture-Recognition-Experiments repository.
-Adaptation and training: MeryemTHR.
