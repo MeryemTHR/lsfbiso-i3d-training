@@ -4,6 +4,7 @@ import torch
 import cv2
 import numpy as np
 import random
+import os
 
 
 class LsfbDataset(Dataset):
@@ -33,6 +34,15 @@ class LsfbDataset(Dataset):
         self.transform = transform
         self.one_hot = one_hot
 
+        # Filter out videos that don't exist or are too small
+        valid_paths = []
+        for i, row in self.data.iterrows():
+            if os.path.exists(row["path"]) and os.path.getsize(row["path"]) > 1000:
+                valid_paths.append(i)
+        
+        self.data = self.data.iloc[valid_paths].reset_index(drop=True)
+        print(f"Loaded {len(self.data)} valid videos out of {len(data)} total videos")
+
         if labels is None:
             self.labels = self._get_label_mapping()
         else:
@@ -50,11 +60,24 @@ class LsfbDataset(Dataset):
         # Load video frames
         capture = cv2.VideoCapture(item["path"])
         video = self.extract_frames(capture)
+        
+        # Check if video is empty
+        if len(video) == 0:
+            # Create a dummy frame with zeros as a fallback
+            print(f"Warning: Empty video found at {item['path']}")
+            video = np.zeros((1, 224, 224, 3), dtype=np.float32)
+            
         video_len = len(video)
 
         # Apply transformations
         if self.transform:
-            video = self.transform(video)
+            try:
+                video = self.transform(video)
+            except Exception as e:
+                print(f"Error transforming video {item['path']}: {str(e)}")
+                # Return a dummy transformed video
+                video = np.zeros((3, 64, 224, 224), dtype=np.float32)
+                video = torch.from_numpy(video)
 
         # Adjust labels if sequence labeling
         y = int(item["label_nbr"])
