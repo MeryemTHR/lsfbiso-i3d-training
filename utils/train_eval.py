@@ -20,20 +20,35 @@ def train_model(
         y = y.to(device)
 
         output = model(X)
-
-        loss = criterion(output, y)
+        
+        # Check if we need to reshape the output or target
+        if output.dim() == 2 and y.dim() == 1:
+            # This is standard classification - output is [batch_size, num_classes], target is [batch_size]
+            loss = criterion(output, y)
+            _, preds = torch.max(output, 1)
+            correct = (preds == y).sum()
+        elif output.dim() > 2:
+            # Handle the case for 3D or higher dimensional output
+            b, c, *rest = output.size()
+            output_reshaped = output.view(b, c, -1).mean(dim=2)  # Average across spatial dimensions
+            loss = criterion(output_reshaped, y)
+            _, preds = torch.max(output_reshaped, 1)
+            correct = (preds == y).sum()
+        else:
+            # Unknown case, print shapes for debugging
+            print(f"DEBUG - Output shape: {output.shape}, Target shape: {y.shape}")
+            raise ValueError(f"Unexpected tensor shapes: output {output.shape}, target {y.shape}")
+        
         loss.backward()
         epoch_loss += loss.item()
 
-        _, preds = torch.max(output, 1)
-
         # Cumulated gradient
-        if batch_idx % cumulation == 0:
+        if batch_idx % cumulation == 0 or batch_idx == len(loader):
             optimizer.step()
             optimizer.zero_grad()
             lr_scheduler.step()
 
-        accuracy += torch.sum(preds == y.data)
+        accuracy += correct
 
     epoch_loss = epoch_loss / len(loader)
     train_acc = accuracy.double() / (len(loader) * batch_size)
@@ -59,12 +74,27 @@ def eval_model(model, criterion, loader, device, batch_size):
 
         with torch.set_grad_enabled(False):
             output = model(X)
-
-            loss = criterion(output, y)
+            
+            # Check if we need to reshape the output or target
+            if output.dim() == 2 and y.dim() == 1:
+                # This is standard classification - output is [batch_size, num_classes], target is [batch_size]
+                loss = criterion(output, y)
+                _, preds = torch.max(output, 1)
+                correct = (preds == y).sum()
+            elif output.dim() > 2:
+                # Handle the case for 3D or higher dimensional output
+                b, c, *rest = output.size()
+                output_reshaped = output.view(b, c, -1).mean(dim=2)  # Average across spatial dimensions
+                loss = criterion(output_reshaped, y)
+                _, preds = torch.max(output_reshaped, 1)
+                correct = (preds == y).sum()
+            else:
+                # Unknown case, print shapes for debugging
+                print(f"DEBUG - Output shape: {output.shape}, Target shape: {y.shape}")
+                raise ValueError(f"Unexpected tensor shapes: output {output.shape}, target {y.shape}")
+                
             eval_loss += loss.item()
-
-            _, preds = torch.max(output, 1)
-            eval_acc += torch.sum(preds == y.data)
+            eval_acc += correct
 
     eval_loss = eval_loss / len(loader)
     eval_acc = eval_acc.double() / (len(loader) * batch_size)
