@@ -15,7 +15,8 @@ def train_model(
         batch_idx += 1
 
         X, y = data
-        X = X.to(device)
+        # Ensure input is float32
+        X = X.to(device, dtype=torch.float32)
         y = y.to(device)
 
         output = model(X)
@@ -52,7 +53,8 @@ def eval_model(model, criterion, loader, device, batch_size):
         batch_idx += 1
 
         X, y = data
-        X = X.to(device)
+        # Ensure input is float32
+        X = X.to(device, dtype=torch.float32)
         y = y.to(device)
 
         with torch.set_grad_enabled(False):
@@ -67,4 +69,3 @@ def eval_model(model, criterion, loader, device, batch_size):
     eval_loss = eval_loss / len(loader)
     eval_acc = eval_acc.double() / (len(loader) * batch_size)
     return eval_loss, eval_acc
-
