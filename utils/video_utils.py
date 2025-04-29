@@ -1,13 +1,7 @@
-import numbers
-import torch
-import cv2
 import numpy as np
 import PIL
-from PIL import Image
 
-"""
-Code copied from : https://github.com/hassony2/torch_videovision/blob/master/torchvideotransforms/functional.py
-"""
+# Code copied from : https://github.com/hassony2/torch_videovision/blob/master/torchvideotransforms/functional.py
 
 
 def crop_clip(clip, min_h, min_w, h, w):
@@ -24,50 +18,55 @@ def crop_clip(clip, min_h, min_w, h, w):
     return cropped
 
 
-def get_resize_sizes(im_h, im_w, size):
-    if im_w < im_h:
-        ow = size
-        oh = int(size * im_h / im_w)
-    else:
-        oh = size
-        ow = int(size * im_w / im_h)
-    return oh, ow
-
-
 def resize_clip(clip, size, interpolation="bilinear"):
+    # Handle empty clips
+    if len(clip) == 0:
+        # Return a dummy clip of the target size
+        if isinstance(size, tuple):
+            h, w = size
+        else:
+            h, w = size, size
+        return np.zeros((1, h, w, 3), dtype=np.float32)
+    
     if isinstance(clip[0], np.ndarray):
-        if isinstance(size, numbers.Number):
-            im_h, im_w, im_c = clip[0].shape
-            # Min spatial dim already matches minimal size
-            if (im_w <= im_h and im_w == size) or (im_h <= im_w and im_h == size):
-                return clip
-            new_h, new_w = get_resize_sizes(im_h, im_w, size)
-            size = (new_w, new_h)
+        if isinstance(size, tuple):
+            im_h, im_w = size
         else:
-            size = size[1], size[0]
+            im_w = im_h = size
+        
+        # Check clip dimensions
+        clip_h, clip_w = clip[0].shape[:2]
+        
+        if clip_h == im_h and clip_w == im_w:
+            return clip
+            
         if interpolation == "bilinear":
-            np_inter = cv2.INTER_LINEAR
+            np_inter = 1
         else:
-            np_inter = cv2.INTER_NEAREST
-        scaled = [cv2.resize(img, size, interpolation=np_inter) for img in clip]
+            np_inter = 0
+            
+        # Reshape to target size
+        resized = np.array(
+            [
+                np.array(
+                    PIL.Image.fromarray(img.astype(np.uint8)).resize(
+                        (im_w, im_h), np_inter
+                    )
+                ).astype(float)
+                / 255.0
+                for img in clip
+            ]
+        )
+
+        return resized
     elif isinstance(clip[0], PIL.Image.Image):
-        if isinstance(size, numbers.Number):
-            im_w, im_h = clip[0].size
-            # Min spatial dim already matches minimal size
-            if (im_w <= im_h and im_w == size) or (im_h <= im_w and im_h == size):
-                return clip
-            new_h, new_w = get_resize_sizes(im_h, im_w, size)
-            size = (new_w, new_h)
+        if isinstance(size, tuple):
+            im_h, im_w = size
         else:
-            size = size[1], size[0]
-        if interpolation == "bilinear":
-            pil_inter = PIL.Image.NEAREST
-        else:
-            pil_inter = PIL.Image.BILINEAR
-        scaled = [img.resize(size, pil_inter) for img in clip]
+            im_w = im_h = size
+        return [img.resize((im_w, im_h)) for img in clip]
     else:
         raise TypeError(
             "Expected numpy.ndarray or PIL.Image"
             + "but got list of {0}".format(type(clip[0]))
         )
-    return scaled
