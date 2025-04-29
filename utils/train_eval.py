@@ -39,21 +39,21 @@ def train_model(
         with torch.cuda.amp.autocast():
             output = model(X)
             
-            # Print shapes for debugging (just for the first batch)
-            if batch_idx == 1:
-                print(f"DEBUG - Raw model output shape: {output.shape}")
+            # CRITICAL: Force reshape the output to [batch_size, num_classes]
+            if output.dim() == 3:
+                output = output.mean(dim=2)  # Average over temporal dimension
             
-            # Handle I3D output - flatten any temporal or spatial dimensions
-            if output.dim() > 2:
-                # If we have [batch, classes, time] or any additional dimensions
-                # Reshape to [batch, classes]
-                b = output.size(0)  # Batch size
-                c = output.size(1)  # Number of classes
-                # Collapse all dimensions after the class dimension
-                output = output.reshape(b, c, -1).mean(dim=2)
+            # If still not right shape, print for debugging
+            if output.dim() != 2 or output.size(0) != current_batch_size:
+                print(f"WARNING: Unexpected output shape: {output.shape}")
                 
-                if batch_idx == 1:
-                    print(f"DEBUG - Reshaped output: {output.shape}")
+                # Try a more aggressive reshape
+                if output.dim() > 2:
+                    # Collapse all dimensions except batch
+                    output = output.view(current_batch_size, -1)
+                    # If still multiple dims per sample, take mean across them
+                    if output.size(1) != model.i3d._num_classes:
+                        output = output.view(current_batch_size, model.i3d._num_classes, -1).mean(dim=2)
             
             loss = criterion(output, y)
         
@@ -109,14 +109,21 @@ def eval_model(model, criterion, loader, device, batch_size):
             with torch.cuda.amp.autocast():
                 output = model(X)
                 
-                # Handle I3D output - flatten any temporal or spatial dimensions
-                if output.dim() > 2:
-                    # If we have [batch, classes, time] or any additional dimensions
-                    # Reshape to [batch, classes]
-                    b = output.size(0)  # Batch size
-                    c = output.size(1)  # Number of classes
-                    # Collapse all dimensions after the class dimension
-                    output = output.reshape(b, c, -1).mean(dim=2)
+                # CRITICAL: Force reshape the output to [batch_size, num_classes]
+                if output.dim() == 3:
+                    output = output.mean(dim=2)  # Average over temporal dimension
+                
+                # If still not right shape, reshape aggressively
+                if output.dim() != 2 or output.size(0) != current_batch_size:
+                    print(f"WARNING: Unexpected output shape: {output.shape}")
+                    
+                    # Try a more aggressive reshape
+                    if output.dim() > 2:
+                        # Collapse all dimensions except batch
+                        output = output.view(current_batch_size, -1)
+                        # If still multiple dims per sample, take mean across them
+                        if output.size(1) != model.i3d._num_classes:
+                            output = output.view(current_batch_size, model.i3d._num_classes, -1).mean(dim=2)
                     
                 loss = criterion(output, y)
                 
