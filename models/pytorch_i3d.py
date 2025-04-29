@@ -421,10 +421,15 @@ class InceptionI3d(nn.Module):
                 )  # use _modules to work with dataparallel
 
         x = self.logits(self.dropout(self.avg_pool(x)))
-        if self._spatial_squeeze:
-            logits = x.squeeze(3).squeeze(3)
-        # logits is batch X time X classes, which is what we want to work with
-        return logits
+        
+        # IMPORTANT: Average over temporal dimension to get [batch, num_classes]
+        if self._spatial_squeeze and x.dim() > 2:
+            x = x.squeeze(3).squeeze(3)  # Spatial squeeze first
+            if x.dim() > 2:  # If we still have a temporal dimension
+                x = x.mean(dim=2)  # Average over the temporal dimension
+        
+        # logits is now batch X classes
+        return x
 
     def extract_features(self, x):
         for end_point in self.VALID_ENDPOINTS:
