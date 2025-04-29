@@ -79,6 +79,12 @@ class LsfbDataset(Dataset):
                 video = np.zeros((3, 64, 224, 224), dtype=np.float32)
                 video = torch.from_numpy(video)
 
+        # Ensure the video tensor is float32, not float64
+        if isinstance(video, torch.Tensor):
+            video = video.float()
+        elif isinstance(video, np.ndarray):
+            video = torch.from_numpy(video).float()
+
         # Adjust labels if sequence labeling
         y = int(item["label_nbr"])
 
@@ -130,11 +136,12 @@ class LsfbDataset(Dataset):
             # Convert BGR (OpenCV) to RGB
             b, g, r = cv2.split(frame)
             frame = cv2.merge([r, g, b])
-            frame_array.append(frame / 255.0)  # Normalize pixel values between 0 and 1
+            # Use float32 explicitly
+            frame_array.append((frame / 255.0).astype(np.float32))
             success, frame = capture.read()
 
             # Safety limit: max 150 frames (~5 seconds)
             if frame_count > 150:
                 break
 
-        return np.array(frame_array)
+        return np.array(frame_array, dtype=np.float32)  # Ensure float32 type
