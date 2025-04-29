@@ -35,17 +35,25 @@ def train_model(
         X = X.to(device, dtype=torch.float32, non_blocking=True)
         y = y.to(device, non_blocking=True)
         
-        # Free memory
-        del data
-        
         # Use mixed precision for forward pass
         with torch.cuda.amp.autocast():
             output = model(X)
             
-            # Handle I3D temporal dimension - average across time
-            if output.dim() == 3:  # [batch_size, num_classes, time]
-                # Average over the temporal dimension to get [batch_size, num_classes]
-                output = output.mean(dim=2)
+            # Print shapes for debugging (just for the first batch)
+            if batch_idx == 1:
+                print(f"DEBUG - Raw model output shape: {output.shape}")
+            
+            # Handle I3D output - flatten any temporal or spatial dimensions
+            if output.dim() > 2:
+                # If we have [batch, classes, time] or any additional dimensions
+                # Reshape to [batch, classes]
+                b = output.size(0)  # Batch size
+                c = output.size(1)  # Number of classes
+                # Collapse all dimensions after the class dimension
+                output = output.reshape(b, c, -1).mean(dim=2)
+                
+                if batch_idx == 1:
+                    print(f"DEBUG - Reshaped output: {output.shape}")
             
             loss = criterion(output, y)
         
@@ -53,11 +61,9 @@ def train_model(
         scaler.scale(loss).backward()
         epoch_loss += loss.item() * current_batch_size
         
+        # Calculate accuracy
         _, preds = torch.max(output, 1)
         accuracy += torch.sum(preds == y.data)
-        
-        # Free memory
-        del X, y, output, loss, preds
         
         # Cumulated gradient
         if batch_idx % cumulation == 0 or batch_idx == len(loader):
@@ -98,18 +104,19 @@ def eval_model(model, criterion, loader, device, batch_size):
         X = X.to(device, dtype=torch.float32, non_blocking=True)
         y = y.to(device, non_blocking=True)
         
-        # Free memory
-        del data
-        
         with torch.no_grad():
             # Use mixed precision
             with torch.cuda.amp.autocast():
                 output = model(X)
                 
-                # Handle I3D temporal dimension - average across time
-                if output.dim() == 3:  # [batch_size, num_classes, time]
-                    # Average over the temporal dimension to get [batch_size, num_classes]
-                    output = output.mean(dim=2)
+                # Handle I3D output - flatten any temporal or spatial dimensions
+                if output.dim() > 2:
+                    # If we have [batch, classes, time] or any additional dimensions
+                    # Reshape to [batch, classes]
+                    b = output.size(0)  # Batch size
+                    c = output.size(1)  # Number of classes
+                    # Collapse all dimensions after the class dimension
+                    output = output.reshape(b, c, -1).mean(dim=2)
                     
                 loss = criterion(output, y)
                 
@@ -117,9 +124,6 @@ def eval_model(model, criterion, loader, device, batch_size):
 
             _, preds = torch.max(output, 1)
             eval_acc += torch.sum(preds == y.data)
-            
-        # Free memory
-        del X, y, output, loss, preds
             
     eval_loss = eval_loss / total_samples
     eval_acc = eval_acc.double() / total_samples
