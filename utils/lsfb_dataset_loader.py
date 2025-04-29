@@ -1,78 +1,48 @@
 import pandas as pd
-import glob
-from os.path import sep
+import os
+import json
 
-def load_lsfb_dataset(path:str, verbose: bool = True):
-  '''
-  Read the LSFB corpus in a dataframe containing the label of each signs, a number associated to each label,
-  the path of the sign and which subset the signs come from (test or train). 
+def load_lsfb_dataset(data_dir, verbose=True):
+    '''
+    Read the LSFB dataset using instances.csv and train/test JSON splits.
 
-  PARAMETERS:
-    path : The path to lsfb corpus folder
+    PARAMETERS:
+      data_dir : The path to LSFB corpus folder containing instances.csv and metadata/splits/train.json
+      verbose : Whether to print loading messages
 
-  OUTPUT:
-    dataset : A dataframre containing 4 columns (label, label_nbr, path, subset) 
-  '''
+    OUTPUT:
+      dataset : A dataframe containing 4 columns (label, label_nbr, path, subset)
+    '''
+    # Load instances.csv
+    csv_path = os.path.join(data_dir, 'instances.csv')
+    dataset = pd.read_csv(csv_path)
 
-  signs_folders = glob.glob(f"{path}{sep}*")
-  map_label = {value.split(sep)[-1]: idx for (idx, value) in enumerate(signs_folders)}
+    # Load train/test splits
+    metadata_splits = os.path.join(data_dir, 'metadata', 'splits')
+    with open(os.path.join(metadata_splits, 'train.json'), 'r') as f:
+        train_files = json.load(f)
+    with open(os.path.join(metadata_splits, 'test.json'), 'r') as f:
+        test_files = json.load(f)
 
-  dataset = pd.DataFrame(columns=['label', 'label_nbr', 'path', 'subset'])
+    # Add 'subset' column based on filenames
+    subset_column = []
+    for video_name in dataset['video']:
+        if video_name in train_files:
+            subset_column.append('train')
+        elif video_name in test_files:
+            subset_column.append('test')
+        else:
+            subset_column.append('unknown')  # (if needed)
 
-  for (idx, folder) in enumerate(signs_folders):
-    train_path = f"{folder}{sep}train{sep}*"
-    test_path = f"{folder}{sep}test{sep}*"
-    label = folder.split(sep)[-1]
+    dataset['subset'] = subset_column
 
-    if(verbose):
-      printProgressBar(idx+1, len(signs_folders), prefix=f'Loading dataset')
+    # Build full path for each video
+    dataset['path'] = dataset['video'].apply(lambda x: os.path.join(data_dir, 'videos', x))
 
-    for sign in glob.glob(train_path):
-      row = {}
-      row['label'] = label 
-      row['label_nbr'] = map_label[label]
-      row['path'] = sign
-      row['subset'] = 'train'
+    # Keep only necessary columns
+    dataset = dataset[['label', 'label_nbr', 'path', 'subset']]
 
-      dataset = dataset.append(row, ignore_index=True)
+    if verbose:
+        print(f"Dataset loaded: {len(dataset)} samples.")
 
-    for sign in glob.glob(test_path):
-      row = {}
-      row['label'] = label 
-      row['label_nbr'] = map_label[label]
-      row['path'] = sign
-      row['subset'] = 'test'
-
-      dataset = dataset.append(row, ignore_index=True)
-
-  return dataset
-
-
-
-# Print iterations progress
-def printProgressBar (iteration:int, total:int, prefix:str = '', suffix:str = '', decimals:int = 1, length:int = 100, fill:str = '█', printEnd:str = "\r"):
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-    """
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
-    # Print New Line on Complete
-    if iteration == total: 
-        print()
-
-    
-
-
-
-
+    return dataset
